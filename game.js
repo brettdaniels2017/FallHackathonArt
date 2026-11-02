@@ -25,8 +25,8 @@ const BACKSTOP = 120;
 const DEFAULTS = { flow: 55, brush: 22, color: COLORS[0].hex, shape: 'cube' };
 
 const { Engine, Composite, Bodies, Body, Query, Resolver } = Matter;
-// A little more of each contact is pushed back out, so a tall pile
-// sinks less where the weight is greatest.
+// Contacts still push back a little. Cubes get a second, exact
+// separation so a pile cannot pack them into each other.
 Resolver._positionDampen = 1.28;
 
 const app = document.getElementById('app');
@@ -200,6 +200,57 @@ function containGrains() {
     if (x !== body.position.x || y !== body.position.y) {
       Body.setPosition(body, { x, y });
       Body.setVelocity(body, { x: 0, y: 0 });
+    }
+  }
+}
+
+function separateCubePair(a, b) {
+  const dx = b.position.x - a.position.x;
+  const dy = b.position.y - a.position.y;
+  const reach = a.sandSize / 2 + b.sandSize / 2;
+  const overlapX = reach - Math.abs(dx);
+  const overlapY = reach - Math.abs(dy);
+  if (overlapX <= 0 || overlapY <= 0) return;
+  if (overlapX < overlapY) {
+    const sign = dx < 0 ? -1 : 1;
+    const shift = overlapX / 2;
+    Body.setPosition(a, { x: a.position.x - sign * shift, y: a.position.y });
+    Body.setPosition(b, { x: b.position.x + sign * shift, y: b.position.y });
+    return;
+  }
+  const top = a.position.y <= b.position.y ? a : b;
+  const bottom = top === a ? b : a;
+  Body.setPosition(top, { x: top.position.x, y: bottom.position.y - reach });
+}
+
+function unstickCubes() {
+  const cubes = [];
+  for (const body of grains) {
+    if (body.sandShape === 'cube') cubes.push(body);
+  }
+  if (cubes.length < 2) return;
+  const cell = 20;
+  for (let pass = 0; pass < 6; pass++) {
+    const grid = new Map();
+    for (const body of cubes) {
+      const key = `${Math.floor(body.position.x / cell)},${Math.floor(body.position.y / cell)}`;
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(body);
+      else grid.set(key, [body]);
+    }
+    for (const body of cubes) {
+      const gx = Math.floor(body.position.x / cell);
+      const gy = Math.floor(body.position.y / cell);
+      for (let ix = -1; ix <= 1; ix++) {
+        for (let iy = -1; iy <= 1; iy++) {
+          const bucket = grid.get(`${gx + ix},${gy + iy}`);
+          if (!bucket) continue;
+          for (const other of bucket) {
+            if (other.id <= body.id) continue;
+            separateCubePair(body, other);
+          }
+        }
+      }
     }
   }
 }
@@ -546,6 +597,7 @@ function frame(now) {
     Engine.update(engine, 1000 / 120);
     Engine.update(engine, 1000 / 120);
     containGrains();
+    unstickCubes();
     emit(dt);
   }
   if (view) {
