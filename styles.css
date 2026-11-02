@@ -86,11 +86,6 @@ h1 {
   box-shadow: none;
 }
 
-.app.is-full .dot {
-  background: #c4842a;
-  box-shadow: 0 0 0 4px rgba(196, 132, 42, 0.16);
-}
-
 .hint {
   margin: 14px 0 10px;
   font-size: 0.72rem;
@@ -199,14 +194,6 @@ canvas {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.count {
-  margin-right: 6px;
-  font-size: 0.8rem;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
 }
 
 .tool {

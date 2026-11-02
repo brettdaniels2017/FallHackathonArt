@@ -13,8 +13,13 @@ const COLORS = [
   { name: 'White', hex: '#fffdf8' },
 ];
 
-const MAX_GRAINS = 2400;
 const WALL = 72;
+const FILL_LINE = 28;
+// Previous grains were about 4px across. These are much finer, so more of
+// them are released to keep the same amount of color in the stream.
+const GRAIN_MIN = 1.15;
+const GRAIN_EXTRA = 0.55;
+const COLOR_PER_GRAIN = (4 / (GRAIN_MIN + GRAIN_EXTRA / 2)) ** 2;
 const BACKSTOP = 120;
 const DEFAULTS = { flow: 55, brush: 22, color: COLORS[0].hex };
 
@@ -31,7 +36,6 @@ const flowInput = document.getElementById('flow');
 const brushInput = document.getElementById('brush');
 const flowOut = document.getElementById('flow-out');
 const brushOut = document.getElementById('brush-out');
-const countEl = document.getElementById('count');
 const pauseBtn = document.getElementById('pause-btn');
 const clearBtn = document.getElementById('clear-btn');
 const resetBtn = document.getElementById('reset-btn');
@@ -62,7 +66,6 @@ let pointer = null;
 let hovering = false;
 let emitAcc = 0;
 let lastFrame = performance.now();
-let countLabel = '';
 
 const swatchButtons = COLORS.map((color) => {
   const button = document.createElement('button');
@@ -98,17 +101,14 @@ function syncColorUI() {
   randomBtn.setAttribute('aria-pressed', String(randomMode));
 }
 
+function fillLineY() {
+  return view.inner.y + FILL_LINE;
+}
+
 function syncTransport() {
   pauseBtn.textContent = paused ? 'Play' : 'Pause';
-  const full = grains.length >= MAX_GRAINS;
   app.classList.toggle('is-paused', paused);
-  app.classList.toggle('is-full', full && !paused);
-  statusText.textContent = paused ? 'Physics paused' : full ? 'Container full' : 'Physics active';
-  const label = `${grains.length} / ${MAX_GRAINS}`;
-  if (label !== countLabel) {
-    countLabel = label;
-    countEl.textContent = label;
-  }
+  statusText.textContent = paused ? 'Physics paused' : 'Physics active';
 }
 
 function grainColor() {
@@ -181,9 +181,10 @@ function containGrains() {
     const r = body.circleRadius;
     const minX = box.x + r + 0.5;
     const maxX = box.x + box.w - r - 0.5;
+    const minY = fillLineY() + r + 0.5;
     const maxY = box.y + box.h - r - 0.5;
     const x = Math.min(Math.max(body.position.x, minX), maxX);
-    const y = Math.min(body.position.y, maxY);
+    const y = Math.min(Math.max(body.position.y, minY), maxY);
     if (x !== body.position.x || y !== body.position.y) {
       Body.setPosition(body, { x, y });
       Body.setVelocity(body, { x: 0, y: 0 });
@@ -229,19 +230,22 @@ function pourOrigin() {
   const box = view.inner;
   if (pointer.x < box.x || pointer.x > box.x + box.w) return null;
   if (pointer.y > box.y + box.h) return null;
-  const y = pointer.y < box.y ? box.y + 8 : pointer.y;
+  const underLine = fillLineY() + 4;
+  let y = pointer.y < box.y ? box.y + 8 : pointer.y;
+  if (y < underLine) y = underLine;
   return { x: pointer.x, y };
 }
 
 function spawnGrain(origin) {
-  const radius = 3 + Math.random() * 2;
+  const radius = GRAIN_MIN + Math.random() * GRAIN_EXTRA;
   const box = view.inner;
+  const ceiling = fillLineY() + radius + 0.5;
   let spot = null;
   for (let attempt = 0; attempt < 6; attempt++) {
     const x = origin.x + (Math.random() - 0.5) * brush;
-    const y = origin.y - attempt * radius * 1.35 - Math.random() * 2;
+    const y = origin.y - attempt * radius * 1.6 - Math.random() * 1.2;
     const cx = Math.min(Math.max(x, box.x + radius + 1), box.x + box.w - radius - 1);
-    const cy = Math.min(Math.max(y, box.y + radius + 1), box.y + box.h - radius - 1);
+    const cy = Math.min(Math.max(y, ceiling), box.y + box.h - radius - 1);
     if (!overlaps(cx, cy, radius)) {
       spot = { x: cx, y: cy };
       break;
@@ -251,8 +255,8 @@ function spawnGrain(origin) {
 
   const body = Bodies.circle(spot.x, spot.y, radius, {
     restitution: 0.02,
-    friction: 0.86,
-    frictionStatic: 0.95,
+    friction: 0.7,
+    frictionStatic: 0.78,
     frictionAir: 0.008,
     density: 0.0016 + Math.random() * 0.0012,
     sleepThreshold: 36,
@@ -261,23 +265,23 @@ function spawnGrain(origin) {
   body.sandColor = grainColor();
   Composite.add(world, body);
   Body.setVelocity(body, {
-    x: (Math.random() - 0.5) * 0.55,
-    y: 0.15 + Math.random() * 0.35,
+    x: (Math.random() - 0.5) * 0.85,
+    y: 0.08 + Math.random() * 0.2,
   });
   grains.push(body);
 }
 
 function emit(dt) {
-  if (!pouring || paused || grains.length >= MAX_GRAINS) return;
+  if (!pouring || paused) return;
   const origin = pourOrigin();
   if (!origin) {
     emitAcc = 0;
     return;
   }
   emitAcc += dt;
-  const interval = 1000 / flow;
+  const interval = 1000 / (flow * COLOR_PER_GRAIN);
   let spawned = 0;
-  while (emitAcc >= interval && grains.length < MAX_GRAINS && spawned < 8) {
+  while (emitAcc >= interval && spawned < 36) {
     emitAcc -= interval;
     spawnGrain(origin);
     spawned += 1;
@@ -405,6 +409,19 @@ function drawGlassRim() {
   ctx.restore();
 }
 
+function drawFillLine() {
+  const box = view.inner;
+  const y = fillLineY();
+  ctx.save();
+  ctx.strokeStyle = 'rgba(74, 78, 86, 0.55)';
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  ctx.moveTo(box.x + 14, y);
+  ctx.lineTo(box.x + box.w - 14, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawSand() {
   const groups = new Map();
   for (const body of grains) {
@@ -466,6 +483,7 @@ function draw() {
   ctx.fillRect(0, 0, view.width, view.height);
   drawGlassBowl();
   drawSand();
+  drawFillLine();
   drawGlassRim();
   drawEmptyCue();
   drawBrush();
