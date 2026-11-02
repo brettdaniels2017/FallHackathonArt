@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SANDSCAPE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="header">
+      <div class="title-block">
+        <h1>SANDSCAPE</h1>
+        <p class="subtitle">Create art through gravity.</p>
+        <p class="credit">Dr. Burns - Art Department</p>
+      </div>
+      <p class="status" id="status">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="status-text">Physics active</span>
+      </p>
+    </header>
+
+    <p class="hint">CLICK + HOLD TO POUR <span aria-hidden="true">·</span> CHANGE COLORS TO CREATE YOUR ART</p>
+
+    <div class="stage" id="stage">
+      <canvas id="canvas" aria-label="Glass container. Click and hold to pour sand."></canvas>
+    </div>
+
+    <footer class="toolbar">
+      <div class="palette" id="palette" role="listbox" aria-label="Sand colors"></div>
+
+      <label class="color-custom" id="custom-label">
+        <span>Custom</span>
+        <input type="color" id="custom-color" value="#e2b043" aria-label="Custom sand color">
+      </label>
+
+      <button type="button" class="tool" id="random-btn" aria-pressed="false">Random</button>
+
+      <label class="slider">
+        <span>Flow <output id="flow-out" for="flow">55</output></span>
+        <input type="range" id="flow" min="12" max="90" step="1" value="55">
+      </label>
+
+      <label class="slider">
+        <span>Brush <output id="brush-out" for="brush">22</output></span>
+        <input type="range" id="brush" min="6" max="64" step="1" value="22">
+      </label>
+
+      <div class="actions">
+        <span class="count" id="count">0 / 2400</span>
+        <button type="button" class="tool" id="pause-btn">Pause</button>
+        <button type="button" class="tool" id="clear-btn">Clear</button>
+        <button type="button" class="tool" id="reset-btn">Reset</button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="vendor/matter.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

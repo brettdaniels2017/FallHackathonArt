@@ -1,0 +1,241 @@
+:root {
+  --paper: #f3efe6;
+  --ink: #2a2622;
+  --muted: #6f675e;
+  --line: rgba(42, 38, 34, 0.16);
+  --soft: rgba(42, 38, 34, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(255, 255, 255, 0.7), transparent 60%),
+    var(--paper);
+  color: var(--ink);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+button, input { font: inherit; color: inherit; }
+
+.app {
+  height: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 22px 28px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2vw, 1.7rem);
+  font-weight: 600;
+  letter-spacing: 0.24em;
+}
+
+.subtitle {
+  margin: 0.28rem 0 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+
+.credit {
+  margin: 0.35rem 0 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2f9e6b;
+  box-shadow: 0 0 0 4px rgba(47, 158, 107, 0.16);
+}
+
+.app.is-paused .dot {
+  background: #b3aa9f;
+  box-shadow: none;
+}
+
+.app.is-full .dot {
+  background: #c4842a;
+  box-shadow: 0 0 0 4px rgba(196, 132, 42, 0.16);
+}
+
+.hint {
+  margin: 14px 0 10px;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.hint span { margin: 0 0.35rem; }
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+  border-radius: 18px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 18px;
+  margin-top: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(42, 38, 34, 0.18);
+  padding: 0;
+  cursor: pointer;
+  background: var(--swatch);
+}
+
+.swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
+}
+
+.color-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.color-custom input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(42, 38, 34, 0.18);
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.color-custom input::-webkit-color-swatch-wrapper { padding: 0; }
+.color-custom input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.color-custom.is-on input {
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
+}
+
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 128px;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.slider input {
+  width: 140px;
+  accent-color: var(--ink);
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.count {
+  margin-right: 6px;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tool {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  padding: 0.45rem 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tool:hover { background: var(--soft); }
+
+.tool[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.tool:focus-visible,
+.swatch:focus-visible,
+.color-custom input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+@media (max-width: 800px) {
+  .app { padding: 14px 12px 12px; }
+  .actions { margin-left: 0; }
+  h1 { letter-spacing: 0.16em; }
+  .hint { letter-spacing: 0.08em; }
+}
