@@ -15,15 +15,19 @@ const COLORS = [
 
 const WALL = 72;
 const FILL_LINE = 28;
-// Previous grains were about 4px across. These are much finer, so more of
-// them are released to keep the same amount of color in the stream.
-const GRAIN_MIN = 1.15;
-const GRAIN_EXTRA = 0.55;
-const COLOR_PER_GRAIN = (4 / (GRAIN_MIN + GRAIN_EXTRA / 2)) ** 2;
+// Cubes are a step up from the dust-sized grains, close to the first
+// grains in painted area, so the stream stays full without thousands of bodies.
+const GRAIN_MIN = 6;
+const GRAIN_EXTRA = 1;
+const MEAN_SIDE = GRAIN_MIN + GRAIN_EXTRA / 2;
+const COLOR_PER_GRAIN = (Math.PI * 16) / (MEAN_SIDE * MEAN_SIDE);
 const BACKSTOP = 120;
-const DEFAULTS = { flow: 55, brush: 22, color: COLORS[0].hex };
+const DEFAULTS = { flow: 55, brush: 22, color: COLORS[0].hex, shape: 'cube' };
 
-const { Engine, Composite, Bodies, Body, Query } = Matter;
+const { Engine, Composite, Bodies, Body, Query, Resolver } = Matter;
+// A little more of each contact is pushed back out, so a tall pile
+// sinks less where the weight is greatest.
+Resolver._positionDampen = 1.28;
 
 const app = document.getElementById('app');
 const canvas = document.getElementById('canvas');
@@ -32,6 +36,8 @@ const paletteEl = document.getElementById('palette');
 const customLabel = document.getElementById('custom-label');
 const customInput = document.getElementById('custom-color');
 const randomBtn = document.getElementById('random-btn');
+const ballBtn = document.getElementById('shape-ball');
+const cubeBtn = document.getElementById('shape-cube');
 const flowInput = document.getElementById('flow');
 const brushInput = document.getElementById('brush');
 const flowOut = document.getElementById('flow-out');
@@ -48,8 +54,8 @@ const engine = Engine.create({
   // that grains cannot tunnel through the glass.
   gravity: { x: 0, y: 1, scale: 0.0024 },
 });
-engine.positionIterations = 8;
-engine.velocityIterations = 6;
+engine.positionIterations = 16;
+engine.velocityIterations = 8;
 
 const world = engine.world;
 let walls = [];
@@ -60,6 +66,7 @@ let selected = DEFAULTS.color;
 let randomMode = false;
 let flow = DEFAULTS.flow;
 let brush = DEFAULTS.brush;
+let shape = DEFAULTS.shape;
 let paused = false;
 let pouring = false;
 let pointer = null;
@@ -111,6 +118,11 @@ function syncTransport() {
   statusText.textContent = paused ? 'Physics paused' : 'Physics active';
 }
 
+function syncShapeUI() {
+  ballBtn.setAttribute('aria-pressed', String(shape === 'ball'));
+  cubeBtn.setAttribute('aria-pressed', String(shape === 'cube'));
+}
+
 function grainColor() {
   if (randomMode) return COLORS[(Math.random() * COLORS.length) | 0].hex;
   return selected;
@@ -142,7 +154,7 @@ function buildWalls() {
   const floorY = box.y + box.h;
   const lip = box.y - 8;
   const wallH = floorY + WALL - lip;
-  const hidden = { isStatic: true, friction: 0.6, restitution: 0.02, label: 'wall' };
+  const hidden = { isStatic: true, friction: 0.9, restitution: 0, slop: 0, label: 'wall' };
 
   const floor = Bodies.rectangle(
     box.x + box.w / 2,
@@ -178,7 +190,7 @@ function buildWalls() {
 function containGrains() {
   const box = view.inner;
   for (const body of grains) {
-    const r = body.circleRadius;
+    const r = body.sandSize / 2;
     const minX = box.x + r + 0.5;
     const maxX = box.x + box.w - r - 0.5;
     const minY = fillLineY() + r + 0.5;
@@ -211,18 +223,28 @@ function resize() {
   if (!same) buildWalls();
 }
 
-function overlaps(x, y, radius) {
+function overlaps(x, y, size, kind) {
+  const half = size / 2;
   const found = Query.region(grains, {
-    min: { x: x - radius, y: y - radius },
-    max: { x: x + radius, y: y + radius },
+    min: { x: x - half, y: y - half },
+    max: { x: x + half, y: y + half },
   });
   for (const body of found) {
+    const other = body.sandSize / 2;
     const dx = body.position.x - x;
     const dy = body.position.y - y;
-    const reach = radius + body.circleRadius - 0.4;
-    if (dx * dx + dy * dy < reach * reach) return true;
+    if (kind === 'ball' && body.sandShape === 'ball') {
+      const reach = half + other + 0.2;
+      if (dx * dx + dy * dy < reach * reach) return true;
+    } else if (Math.abs(dx) < half + other + 0.35 && Math.abs(dy) < half + other + 0.35) {
+      return true;
+    }
   }
   return false;
+}
+
+function brushRadius() {
+  return Math.max(4, brush / 2);
 }
 
 function pourOrigin() {
@@ -230,44 +252,50 @@ function pourOrigin() {
   const box = view.inner;
   if (pointer.x < box.x || pointer.x > box.x + box.w) return null;
   if (pointer.y > box.y + box.h) return null;
-  const underLine = fillLineY() + 4;
-  let y = pointer.y < box.y ? box.y + 8 : pointer.y;
-  if (y < underLine) y = underLine;
-  return { x: pointer.x, y };
+  return { x: pointer.x, y: pointer.y };
 }
 
 function spawnGrain(origin) {
-  const radius = GRAIN_MIN + Math.random() * GRAIN_EXTRA;
+  const size = GRAIN_MIN + Math.random() * GRAIN_EXTRA;
+  const half = size / 2;
   const box = view.inner;
-  const ceiling = fillLineY() + radius + 0.5;
+  const ceiling = fillLineY() + half + 0.5;
+  const reach = brushRadius();
   let spot = null;
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const x = origin.x + (Math.random() - 0.5) * brush;
-    const y = origin.y - attempt * radius * 1.6 - Math.random() * 1.2;
-    const cx = Math.min(Math.max(x, box.x + radius + 1), box.x + box.w - radius - 1);
-    const cy = Math.min(Math.max(y, ceiling), box.y + box.h - radius - 1);
-    if (!overlaps(cx, cy, radius)) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.sqrt(Math.random()) * reach;
+    const cx = origin.x + Math.cos(angle) * dist;
+    const cy = origin.y + Math.sin(angle) * dist;
+    if (cx < box.x + half + 1 || cx > box.x + box.w - half - 1) continue;
+    if (cy < ceiling || cy > box.y + box.h - half - 1) continue;
+    if (!overlaps(cx, cy, size, shape)) {
       spot = { x: cx, y: cy };
       break;
     }
   }
   if (!spot) return;
 
-  const body = Bodies.circle(spot.x, spot.y, radius, {
-    restitution: 0.02,
-    friction: 0.7,
-    frictionStatic: 0.78,
-    frictionAir: 0.008,
-    density: 0.0016 + Math.random() * 0.0012,
-    sleepThreshold: 36,
+  const grainOptions = {
+    restitution: 0,
+    friction: shape === 'cube' ? 0.96 : 0.62,
+    frictionStatic: shape === 'cube' ? 1.2 : 0.75,
+    frictionAir: 0.012,
+    density: 0.002,
+    slop: 0,
+    sleepThreshold: 60,
     label: 'sand',
-  });
+  };
+  const body = shape === 'ball'
+    ? Bodies.circle(spot.x, spot.y, size / 2, grainOptions)
+    : Bodies.rectangle(spot.x, spot.y, size, size, grainOptions);
   body.sandColor = grainColor();
+  body.sandSize = size;
+  body.sandShape = shape;
+  // Cubes stay square so a stack rests face to face instead of folding.
+  if (shape === 'cube') Body.setInertia(body, Infinity);
   Composite.add(world, body);
-  Body.setVelocity(body, {
-    x: (Math.random() - 0.5) * 0.85,
-    y: 0.08 + Math.random() * 0.2,
-  });
+  Body.setVelocity(body, { x: 0, y: 0 });
   grains.push(body);
 }
 
@@ -281,7 +309,7 @@ function emit(dt) {
   emitAcc += dt;
   const interval = 1000 / (flow * COLOR_PER_GRAIN);
   let spawned = 0;
-  while (emitAcc >= interval && spawned < 36) {
+  while (emitAcc >= interval && spawned < 8) {
     emitAcc -= interval;
     spawnGrain(origin);
     spawned += 1;
@@ -301,6 +329,7 @@ function resetAll() {
   pouring = false;
   randomMode = false;
   selected = DEFAULTS.color;
+  shape = DEFAULTS.shape;
   flow = DEFAULTS.flow;
   brush = DEFAULTS.brush;
   flowInput.value = String(flow);
@@ -309,6 +338,7 @@ function resetAll() {
   brushOut.textContent = String(brush);
   customInput.value = selected;
   syncColorUI();
+  syncShapeUI();
   syncTransport();
 }
 
@@ -333,7 +363,11 @@ function onPointerDown(event) {
   hovering = insideGlass(pointer);
   if (!hovering) return;
   pouring = true;
-  canvas.setPointerCapture(event.pointerId);
+  try {
+    canvas.setPointerCapture(event.pointerId);
+  } catch (err) {
+    // A synthetic pointer has no id to capture. Real pointers still capture.
+  }
 }
 
 function onPointerMove(event) {
@@ -356,6 +390,14 @@ customInput.addEventListener('input', () => chooseColor(customInput.value));
 randomBtn.addEventListener('click', () => {
   randomMode = !randomMode;
   syncColorUI();
+});
+ballBtn.addEventListener('click', () => {
+  shape = 'ball';
+  syncShapeUI();
+});
+cubeBtn.addEventListener('click', () => {
+  shape = 'cube';
+  syncShapeUI();
 });
 flowInput.addEventListener('input', () => {
   flow = Number(flowInput.value);
@@ -436,16 +478,23 @@ function drawSand() {
   for (const [color, list] of groups) {
     ctx.beginPath();
     for (const body of list) {
-      ctx.moveTo(body.position.x + body.circleRadius, body.position.y);
-      ctx.arc(body.position.x, body.position.y, body.circleRadius, 0, Math.PI * 2);
+      if (body.sandShape === 'ball') {
+        ctx.moveTo(body.position.x + body.circleRadius, body.position.y);
+        ctx.arc(body.position.x, body.position.y, body.circleRadius, 0, Math.PI * 2);
+      } else {
+        const v = body.vertices;
+        ctx.moveTo(v[0].x, v[0].y);
+        ctx.lineTo(v[1].x, v[1].y);
+        ctx.lineTo(v[2].x, v[2].y);
+        ctx.lineTo(v[3].x, v[3].y);
+        ctx.closePath();
+      }
     }
     ctx.fillStyle = color;
     ctx.fill();
-    if (color === '#fffdf8') {
-      ctx.strokeStyle = 'rgba(90, 78, 64, 0.28)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
+    ctx.strokeStyle = color === '#fffdf8' ? 'rgba(90, 78, 64, 0.35)' : 'rgba(42, 38, 34, 0.18)';
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
   }
 }
 
@@ -467,7 +516,7 @@ function drawBrush() {
   if (!hovering || !pointer || paused) return;
   ctx.save();
   ctx.beginPath();
-  ctx.arc(pointer.x, pointer.y, Math.max(4, brush / 2), 0, Math.PI * 2);
+  ctx.arc(pointer.x, pointer.y, brushRadius(), 0, Math.PI * 2);
   ctx.strokeStyle = randomMode ? 'rgba(42, 38, 34, 0.45)' : selected;
   ctx.globalAlpha = 0.85;
   ctx.lineWidth = 1.5;
@@ -506,6 +555,7 @@ function frame(now) {
 }
 
 syncColorUI();
+syncShapeUI();
 syncTransport();
 resize();
 new ResizeObserver(resize).observe(document.getElementById('stage'));

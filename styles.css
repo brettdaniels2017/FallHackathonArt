@@ -173,6 +173,11 @@ canvas {
   box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
 }
 
+.shape {
+  display: flex;
+  gap: 6px;
+}
+
 .slider {
   display: flex;
   flex-direction: column;
