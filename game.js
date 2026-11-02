@@ -25,9 +25,9 @@ const BACKSTOP = 120;
 const DEFAULTS = { flow: 55, brush: 22, color: COLORS[0].hex, shape: 'cube' };
 
 const { Engine, Composite, Bodies, Body, Query, Resolver } = Matter;
-// Contacts still push back a little. Cubes get a second, exact
-// separation so a pile cannot pack them into each other.
-Resolver._positionDampen = 1.28;
+// Default contact push. Cubes are separated exactly afterwards so a pile
+// cannot crush them. Balls stay on this solver so they can roll and settle.
+Resolver._positionDampen = 0.9;
 
 const app = document.getElementById('app');
 const canvas = document.getElementById('canvas');
@@ -329,12 +329,12 @@ function spawnGrain(origin) {
   if (!spot) return;
 
   const grainOptions = {
-    restitution: 0,
-    friction: shape === 'cube' ? 0.96 : 0.92,
-    frictionStatic: shape === 'cube' ? 1.2 : 1.05,
-    frictionAir: shape === 'cube' ? 0.012 : 0.04,
+    restitution: shape === 'cube' ? 0 : 0.05,
+    friction: shape === 'cube' ? 0.96 : 0.35,
+    frictionStatic: shape === 'cube' ? 1.2 : 0.45,
+    frictionAir: 0.012,
     density: 0.002,
-    slop: 0,
+    slop: shape === 'cube' ? 0 : 0.05,
     sleepThreshold: 60,
     label: 'sand',
   };
@@ -349,57 +349,6 @@ function spawnGrain(origin) {
   Composite.add(world, body);
   Body.setVelocity(body, { x: 0, y: 0 });
   grains.push(body);
-}
-
-function separateBallPair(a, b) {
-  const dx = b.position.x - a.position.x;
-  const dy = b.position.y - a.position.y;
-  const dist = Math.hypot(dx, dy) || 0.0001;
-  const overlap = a.sandSize / 2 + b.sandSize / 2 - dist;
-  if (overlap <= 0) return;
-  const shift = overlap / 2;
-  const nx = dx / dist;
-  const ny = dy / dist;
-  Body.setPosition(a, { x: a.position.x - nx * shift, y: a.position.y - ny * shift });
-  Body.setPosition(b, { x: b.position.x + nx * shift, y: b.position.y + ny * shift });
-}
-
-function settleBalls() {
-  const balls = [];
-  for (const body of grains) {
-    if (body.sandShape !== 'ball') continue;
-    balls.push(body);
-    const vx = Math.max(-0.55, Math.min(0.55, body.velocity.x));
-    const vy = Math.max(-0.12, body.velocity.y);
-    if (vx !== body.velocity.x || vy !== body.velocity.y) {
-      Body.setVelocity(body, { x: vx, y: vy });
-    }
-  }
-  if (balls.length < 2) return;
-  const cell = 20;
-  for (let pass = 0; pass < 4; pass++) {
-    const grid = new Map();
-    for (const body of balls) {
-      const key = `${Math.floor(body.position.x / cell)},${Math.floor(body.position.y / cell)}`;
-      const bucket = grid.get(key);
-      if (bucket) bucket.push(body);
-      else grid.set(key, [body]);
-    }
-    for (const body of balls) {
-      const gx = Math.floor(body.position.x / cell);
-      const gy = Math.floor(body.position.y / cell);
-      for (let ix = -1; ix <= 1; ix++) {
-        for (let iy = -1; iy <= 1; iy++) {
-          const bucket = grid.get(`${gx + ix},${gy + iy}`);
-          if (!bucket) continue;
-          for (const other of bucket) {
-            if (other.id <= body.id) continue;
-            separateBallPair(body, other);
-          }
-        }
-      }
-    }
-  }
 }
 
 function emit(dt) {
@@ -650,7 +599,6 @@ function frame(now) {
     Engine.update(engine, 1000 / 120);
     containGrains();
     unstickCubes();
-    settleBalls();
     emit(dt);
   }
   if (view) {
