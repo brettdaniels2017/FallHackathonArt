@@ -15,10 +15,10 @@ const COLORS = [
 
 const WALL = 72;
 const FILL_LINE = 28;
-// Cubes are a step up from the dust-sized grains, close to the first
-// grains in painted area, so the stream stays full without thousands of bodies.
-const GRAIN_MIN = 6;
-const GRAIN_EXTRA = 1;
+// Larger grains cover the same color with far fewer bodies, which keeps
+// a full glass from stalling the page.
+const GRAIN_MIN = 12;
+const GRAIN_EXTRA = 2;
 const MEAN_SIDE = GRAIN_MIN + GRAIN_EXTRA / 2;
 const COLOR_PER_GRAIN = (Math.PI * 16) / (MEAN_SIDE * MEAN_SIDE);
 const BACKSTOP = 120;
@@ -131,9 +131,9 @@ function grainColor() {
 function measure() {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
-  const marginX = Math.max(28, width * 0.06);
-  const marginTop = 18;
-  const marginBottom = 26;
+  const marginX = Math.max(64, width * 0.16);
+  const marginTop = Math.max(32, height * 0.07);
+  const marginBottom = Math.max(40, height * 0.09);
   const innerW = Math.max(120, width - marginX * 2);
   const innerH = Math.max(160, height - marginTop - marginBottom);
   return {
