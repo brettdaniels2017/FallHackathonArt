@@ -22,7 +22,8 @@ const GRAIN_EXTRA = 2;
 const MEAN_SIDE = GRAIN_MIN + GRAIN_EXTRA / 2;
 const COLOR_PER_GRAIN = (Math.PI * 16) / (MEAN_SIDE * MEAN_SIDE);
 const BACKSTOP = 120;
-const DEFAULTS = { flow: 55, brush: 22, color: COLORS[0].hex, shape: 'cube' };
+const DEFAULTS = { flow: 55, brush: 22, color: COLORS[0].hex, shape: 'cube', glass: 'box' };
+const GLASSES = ['box', 'bowl', 'triangle', 'vase'];
 
 const { Engine, Composite, Bodies, Body, Query, Resolver } = Matter;
 // Default contact push. Cubes are separated exactly afterwards so a pile
@@ -38,6 +39,7 @@ const customInput = document.getElementById('custom-color');
 const randomBtn = document.getElementById('random-btn');
 const ballBtn = document.getElementById('shape-ball');
 const cubeBtn = document.getElementById('shape-cube');
+const glassButtons = Object.fromEntries(GLASSES.map((id) => [id, document.getElementById(`glass-${id}`)]));
 const flowInput = document.getElementById('flow');
 const brushInput = document.getElementById('brush');
 const flowOut = document.getElementById('flow-out');
@@ -67,6 +69,7 @@ let randomMode = false;
 let flow = DEFAULTS.flow;
 let brush = DEFAULTS.brush;
 let shape = DEFAULTS.shape;
+let glass = DEFAULTS.glass;
 let paused = false;
 let pouring = false;
 let pointer = null;
@@ -123,6 +126,91 @@ function syncShapeUI() {
   cubeBtn.setAttribute('aria-pressed', String(shape === 'cube'));
 }
 
+function syncGlassUI() {
+  for (const id of GLASSES) {
+    glassButtons[id].setAttribute('aria-pressed', String(glass === id));
+  }
+}
+
+function chooseGlass(id) {
+  if (glass === id) return;
+  glass = id;
+  syncGlassUI();
+  if (view) buildWalls();
+}
+
+// Inner left/right edges at a given y. Every vessel uses the same outer box,
+// so the shapes stay a similar size and only the silhouette changes.
+function glassSpan(y) {
+  const box = view.inner;
+  const top = box.y;
+  const bottom = box.y + box.h;
+  const cx = box.x + box.w / 2;
+  const clamped = Math.min(Math.max(y, top), bottom);
+  const t = (clamped - top) / box.h;
+  let half = box.w / 2;
+  if (glass === 'bowl') {
+    const curve = Math.sqrt(Math.max(0, 1 - t * t));
+    half = box.w * 0.18 + (box.w / 2 - box.w * 0.18) * curve;
+  } else if (glass === 'triangle') {
+    const floorHalf = box.w * 0.06;
+    half = box.w / 2 - (box.w / 2 - floorHalf) * t;
+  } else if (glass === 'vase') {
+    half = (box.w / 2) * (1 - 0.52 * t);
+  }
+  return { left: cx - half, right: cx + half };
+}
+
+function slab(x1, y1, x2, y2, nx, ny, hidden) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.5) return null;
+  const ux = dx / len;
+  const uy = dy / len;
+  const extra = WALL * 0.45;
+  const ax = x1 - ux * extra;
+  const ay = y1 - uy * extra;
+  const bx = x2 + ux * extra;
+  const by = y2 + uy * extra;
+  return Bodies.rectangle(
+    (ax + bx) / 2 + nx * (WALL / 2),
+    (ay + by) / 2 + ny * (WALL / 2),
+    len + extra * 2,
+    WALL,
+    { ...hidden, angle: Math.atan2(uy, ux) },
+  );
+}
+
+function edgeWalls(points, outwardSign, hidden) {
+  const bodies = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const nx = outwardSign === 1 ? -dy : dy;
+    const ny = outwardSign === 1 ? dx : -dx;
+    const nl = Math.hypot(nx, ny) || 1;
+    const body = slab(a.x, a.y, b.x, b.y, nx / nl, ny / nl, hidden);
+    if (body) bodies.push(body);
+  }
+  return bodies;
+}
+
+function shapeOutline(samples) {
+  const box = view.inner;
+  const left = [];
+  const right = [];
+  for (let i = 0; i <= samples; i++) {
+    const y = box.y + (box.h * i) / samples;
+    const span = glassSpan(y);
+    left.push({ x: span.left, y });
+    right.push({ x: span.right, y });
+  }
+  return { left, right };
+}
+
 function grainColor() {
   if (randomMode) return COLORS[(Math.random() * COLORS.length) | 0].hex;
   return selected;
@@ -156,34 +244,32 @@ function buildWalls() {
   const lip = box.y - 8;
   const wallH = floorY + WALL - lip;
   const hidden = { isStatic: true, friction: 0.9, restitution: 0, slop: 0, label: 'wall' };
-
-  const floor = Bodies.rectangle(
-    box.x + box.w / 2,
-    floorY + WALL / 2,
-    box.w + WALL * 2,
-    WALL,
-    { ...hidden, friction: 0.95 },
-  );
-  const left = Bodies.rectangle(
-    box.x - WALL / 2,
-    lip + wallH / 2,
-    WALL,
-    wallH,
-    hidden,
-  );
-  const right = Bodies.rectangle(
-    box.x + box.w + WALL / 2,
-    lip + wallH / 2,
-    WALL,
-    wallH,
-    hidden,
-  );
   const back = [
     Bodies.rectangle(box.x + box.w / 2, floorY + WALL + BACKSTOP / 2, box.w + BACKSTOP * 2, BACKSTOP, hidden),
     Bodies.rectangle(box.x - WALL - BACKSTOP / 2, lip + wallH / 2, BACKSTOP, wallH + BACKSTOP, hidden),
     Bodies.rectangle(box.x + box.w + WALL + BACKSTOP / 2, lip + wallH / 2, BACKSTOP, wallH + BACKSTOP, hidden),
   ];
-  walls = [floor, left, right, ...back];
+
+  if (glass === 'box') {
+    const floor = Bodies.rectangle(
+      box.x + box.w / 2,
+      floorY + WALL / 2,
+      box.w + WALL * 2,
+      WALL,
+      { ...hidden, friction: 0.95 },
+    );
+    const left = Bodies.rectangle(box.x - WALL / 2, lip + wallH / 2, WALL, wallH, hidden);
+    const right = Bodies.rectangle(box.x + box.w + WALL / 2, lip + wallH / 2, WALL, wallH, hidden);
+    walls = [floor, left, right, ...back];
+  } else {
+    const outline = shapeOutline(36);
+    const leftWalls = edgeWalls(outline.left, 1, hidden);
+    const rightWalls = edgeWalls(outline.right, -1, hidden);
+    const bl = outline.left[outline.left.length - 1];
+    const br = outline.right[outline.right.length - 1];
+    const floor = slab(bl.x, bl.y, br.x, br.y, 0, 1, { ...hidden, friction: 0.95 });
+    walls = [...leftWalls, ...rightWalls, floor, ...back];
+  }
   Composite.add(world, walls);
   containGrains();
 }
@@ -192,12 +278,17 @@ function containGrains() {
   const box = view.inner;
   for (const body of grains) {
     const r = body.sandSize / 2;
-    const minX = box.x + r + 0.5;
-    const maxX = box.x + box.w - r - 0.5;
-    const minY = fillLineY() + r + 0.5;
-    const maxY = box.y + box.h - r - 0.5;
-    const x = Math.min(Math.max(body.position.x, minX), maxX);
-    const y = Math.min(Math.max(body.position.y, minY), maxY);
+    let y = body.position.y;
+    const minY = fillLineY() + r;
+    const maxY = box.y + box.h - r - 1;
+    const escapedY = y < minY - 2 || y > maxY + 2;
+    if (escapedY) y = Math.min(Math.max(y, minY), maxY);
+    const span = glassSpan(y);
+    const minX = span.left + r + 1;
+    const maxX = span.right - r - 1;
+    let x = body.position.x;
+    const escapedX = maxX > minX && (x < minX - 2 || x > maxX + 2);
+    if (escapedX) x = Math.min(Math.max(x, minX), maxX);
     if (x !== body.position.x || y !== body.position.y) {
       Body.setPosition(body, { x, y });
       Body.setVelocity(body, { x: 0, y: 0 });
@@ -302,8 +393,10 @@ function brushRadius() {
 function pourOrigin() {
   if (!pointer || !view) return null;
   const box = view.inner;
-  if (pointer.x < box.x || pointer.x > box.x + box.w) return null;
-  if (pointer.y > box.y + box.h) return null;
+  if (pointer.y < box.y - 24 || pointer.y > box.y + box.h) return null;
+  const y = Math.min(Math.max(pointer.y, box.y), box.y + box.h - 1);
+  const span = glassSpan(y);
+  if (pointer.x < span.left || pointer.x > span.right) return null;
   return { x: pointer.x, y: pointer.y };
 }
 
@@ -320,8 +413,9 @@ function spawnGrain(origin) {
     const dist = Math.sqrt(Math.random()) * reach;
     const cx = origin.x + Math.cos(angle) * dist;
     const cy = origin.y + Math.sin(angle) * dist;
-    if (cx < box.x + half + 1 || cx > box.x + box.w - half - 1) continue;
     if (cy < ceiling || cy > box.y + box.h - half - 1) continue;
+    const span = glassSpan(cy);
+    if (cx < span.left + half + 1 || cx > span.right - half - 1) continue;
     if (!overlaps(cx, cy, size, shape)) {
       spot = { x: cx, y: cy };
       break;
@@ -383,6 +477,7 @@ function resetAll() {
   randomMode = false;
   selected = DEFAULTS.color;
   shape = DEFAULTS.shape;
+  glass = DEFAULTS.glass;
   flow = DEFAULTS.flow;
   brush = DEFAULTS.brush;
   flowInput.value = String(flow);
@@ -392,6 +487,8 @@ function resetAll() {
   customInput.value = selected;
   syncColorUI();
   syncShapeUI();
+  syncGlassUI();
+  if (view) buildWalls();
   syncTransport();
 }
 
@@ -407,7 +504,10 @@ function eventPoint(event) {
 function insideGlass(point) {
   if (!point || !view) return false;
   const box = view.inner;
-  return point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y - 24 && point.y <= box.y + box.h;
+  if (point.y < box.y - 24 || point.y > box.y + box.h) return false;
+  const y = Math.min(Math.max(point.y, box.y), box.y + box.h - 1);
+  const span = glassSpan(y);
+  return point.x >= span.left && point.x <= span.right;
 }
 
 function onPointerDown(event) {
@@ -452,6 +552,9 @@ cubeBtn.addEventListener('click', () => {
   shape = 'cube';
   syncShapeUI();
 });
+for (const id of GLASSES) {
+  glassButtons[id].addEventListener('click', () => chooseGlass(id));
+}
 flowInput.addEventListener('input', () => {
   flow = Number(flowInput.value);
   flowOut.textContent = String(flow);
@@ -477,42 +580,64 @@ function roundPath(x, y, w, h, r) {
   else ctx.rect(x, y, w, h);
 }
 
-function drawGlassBowl() {
+function traceVessel(inset) {
   const box = view.inner;
+  if (glass === 'box') {
+    roundPath(box.x + inset, box.y + inset, box.w - inset * 2, box.h - inset * 2, Math.max(8, 20 - inset));
+    return;
+  }
+  const steps = 64;
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i++) {
+    const y = box.y + inset + ((box.h - inset * 2) * i) / steps;
+    const span = glassSpan(y);
+    const x = span.left + inset;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  for (let i = steps; i >= 0; i--) {
+    const y = box.y + inset + ((box.h - inset * 2) * i) / steps;
+    const span = glassSpan(y);
+    ctx.lineTo(span.right - inset, y);
+  }
+  ctx.closePath();
+}
+
+function drawGlassBowl() {
   ctx.save();
   ctx.shadowColor = 'rgba(70, 52, 28, 0.14)';
   ctx.shadowBlur = 28;
   ctx.shadowOffsetY = 12;
   ctx.fillStyle = 'rgba(255, 252, 247, 0.55)';
-  roundPath(box.x, box.y, box.w, box.h, 20);
+  traceVessel(0);
   ctx.fill();
   ctx.restore();
 }
 
 function drawGlassRim() {
-  const box = view.inner;
   ctx.save();
   ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
   ctx.lineWidth = 6;
-  roundPath(box.x + 3, box.y + 3, box.w - 6, box.h - 6, 16);
+  traceVessel(3);
   ctx.stroke();
   ctx.strokeStyle = 'rgba(74, 78, 86, 0.55)';
   ctx.lineWidth = 3;
-  roundPath(box.x, box.y, box.w, box.h, 20);
+  traceVessel(0);
   ctx.stroke();
   ctx.restore();
 }
 
 function drawFillLine() {
-  const box = view.inner;
   const y = fillLineY();
+  const span = glassSpan(y);
   ctx.save();
   ctx.strokeStyle = 'rgba(74, 78, 86, 0.55)';
   ctx.lineWidth = 1.25;
   ctx.beginPath();
-  ctx.moveTo(box.x + 14, y);
-  ctx.lineTo(box.x + box.w - 14, y);
+  ctx.moveTo(span.left + 14, y);
+  ctx.lineTo(span.right - 14, y);
   ctx.stroke();
   ctx.restore();
 }
@@ -610,6 +735,7 @@ function frame(now) {
 
 syncColorUI();
 syncShapeUI();
+syncGlassUI();
 syncTransport();
 resize();
 new ResizeObserver(resize).observe(document.getElementById('stage'));
