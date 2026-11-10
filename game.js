@@ -134,14 +134,15 @@ function measure() {
   const marginX = Math.max(64, width * 0.16);
   const marginTop = Math.max(32, height * 0.07);
   const marginBottom = Math.max(40, height * 0.09);
-  const innerW = Math.max(120, width - marginX * 2);
-  const innerH = Math.max(160, height - marginTop - marginBottom);
+  const innerW = Math.max(120, (width - marginX * 2) * 0.8);
+  const innerH = Math.max(160, (height - marginTop - marginBottom) * 0.8);
+  const spareY = height - marginTop - marginBottom - innerH;
   return {
     width,
     height,
     inner: {
       x: (width - innerW) / 2,
-      y: marginTop,
+      y: marginTop + spareY / 2,
       w: innerW,
       h: innerH,
     },
