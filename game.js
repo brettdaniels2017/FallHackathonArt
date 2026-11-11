@@ -135,6 +135,7 @@ function syncGlassUI() {
 function chooseGlass(id) {
   if (glass === id) return;
   glass = id;
+  clearSand();
   syncGlassUI();
   if (view) buildWalls();
 }

@@ -29,6 +29,16 @@
       <canvas id="canvas" aria-label="Glass container. Click and hold to pour sand."></canvas>
     </div>
 
+    <section class="vessels" aria-label="Container">
+      <span class="vessels-label">Container</span>
+      <div class="shape" role="group" aria-label="Glass shape">
+        <button type="button" class="tool" id="glass-box" aria-pressed="true">Box</button>
+        <button type="button" class="tool" id="glass-bowl" aria-pressed="false">Bowl</button>
+        <button type="button" class="tool" id="glass-triangle" aria-pressed="false">Triangle</button>
+        <button type="button" class="tool" id="glass-vase" aria-pressed="false">Vase</button>
+      </div>
+    </section>
+
     <footer class="toolbar">
       <div class="palette" id="palette" role="listbox" aria-label="Sand colors"></div>
 
@@ -42,13 +52,6 @@
       <div class="shape" role="group" aria-label="Grain shape">
         <button type="button" class="tool" id="shape-ball" aria-pressed="false">Balls</button>
         <button type="button" class="tool" id="shape-cube" aria-pressed="true">Cubes</button>
-      </div>
-
-      <div class="shape" role="group" aria-label="Glass shape">
-        <button type="button" class="tool" id="glass-box" aria-pressed="true">Box</button>
-        <button type="button" class="tool" id="glass-bowl" aria-pressed="false">Bowl</button>
-        <button type="button" class="tool" id="glass-triangle" aria-pressed="false">Triangle</button>
-        <button type="button" class="tool" id="glass-vase" aria-pressed="false">Vase</button>
       </div>
 
       <label class="slider">
